@@ -1,0 +1,191 @@
+---
+title: "Predicting Manner of Exercising from Accelerometer Measurements Using Machine Learning"
+author: Jodie Burchell
+output: html_document
+---
+
+## Background
+This project aims to predict in which manner participants completed a single exercise, based on recordings provided by accelerometers on the belt, forearm, arm, and dumbell. Six male participants aged 20-28 were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in one correct, and 4 incorrect fashions. Specifically, the exercises were performed:
+* Exactly according to the specification (Class A);
+* Throwing elbows to the front (Class B);
+* Lifting the dumbbell only halfway (Class C);
+* Lowering the dumbbell only halfway (Class D); and
+* Throwing the hips to the front (Class E).
+
+Measurements were taken using four 9 degrees of freedom Razor inertial measurement units (IMU), which were attached to the participant's chest, upper arm and forearm (glove) and the dumbbell (Figure 1). The authors of the study used a  used a sliding window approach with different lengths from 0.5 second to 2.5 seconds, with 0.5 second overlap. In each step of the sliding window approach we calculated features on the Euler angles (roll, pitch and yaw), as well as the raw accelerometer, gyroscope and magnetometer readings. For the Euler angles of each of the four sensors we calculated eight features: mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness, generating in total 96 derived feature sets.
+
+```{r study_diagram fig.width=5, fig.height=5, echo=FALSE, fig.align = 'center'}
+library(png)
+library(grid)
+img <- readPNG(Users/jburchell/Documents/Practical-Machine-Learning-Assignment/placement_of_measuring_devices.png)
+grid.raster(img)
+```
+
+**Figure 1.** Placement of the measuring devices.
+
+## Loading in the data and splitting into training and testing sets
+
+The labelled dataset was [downloaded](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) on September 22nd, 2015 and loaded into R.
+
+```{r labelled_data_loading, message = FALSE, cache = TRUE}
+rm(list = ls())
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "data.csv")
+data <- read.csv("data.csv")
+```
+
+There were a total of `r nrow(data)` observations in the labelled dataset, which was large enough to split into training and testing datasets. Sixty percent of the data were assigned to the training set and 40% to the testing set.
+
+```{r data_splitting, message = FALSE, cache = TRUE}
+library(caret); library(magrittr); library(knitr)
+set.seed(567)
+inTrain <- createDataPartition(y = data$classe, p = 0.6, list = FALSE)
+training <- data[inTrain, ]
+testing <- data[-inTrain, ]
+```
+
+There were a total of `r nrow(training)` observations in the training set and `r nrow(testing)` in the testing set. The unlabelled validation dataset was also [downloaded](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv).
+
+```{r unlabelled_data_training, message = FALSE, cache = TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "validation.csv")
+validation <- read.csv("validation.csv")
+rm(list = c("data", "inTrain"))
+```
+
+The validation dataset had `r nrow(validation)`.
+
+## Data screening and covariate inspection
+
+The data were initially inspected. A number of variables appeared to have missing variables (e.g. ), and also variables that appeared numeric were classed as factor variables. In addition to the 92 predictor variables and the outcome, there also appeared to be a number of variables describing the time in which the exercise was performed and which of the participants performed the exercise.
+
+```{r data_inspection, message = FALSE}
+str(training)
+```
+
+### Outcome variable
+
+The outcome variable was well distributed between the 5 categories, with the smallest class containing `r min(table(training$classe))`. 
+
+```{r frequency_outcome}
+prop.table(table(training$classe))
+table(training$classe)
+```
+
+### Cleaning factor variables
+
+The predictors were cleaned so that those that were incorrectly classified as factor were converted to numeric.
+
+```{r factor_to_numeric}
+asNumeric <- function(x) as.numeric(as.character(x))
+factorsNumeric <- function(d) modifyList(d, lapply(d[, sapply(d, is.factor)], 
+                                                asNumeric))
+training %>%
+    subset(select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, 
+                      cvtd_timestamp, new_window, num_window, classe)) %>%
+    factorsNumeric -> training[ , 8:159]
+```
+
+### Screening for missing variables
+
+The variables were then inspected for missingness.
+
+```{r missingness_screen}
+propmiss <- function(dataframe) {
+    sapply(dataframe,function(x) 
+    data.frame(nmiss=sum(is.na(x)), 
+               n=length(x), 
+               propmiss=sum(is.na(x))/length(x)))
+}
+
+# Get rid of variable with more than 5% missing (which turns out to be variables with any missing, as
+# missing data is around 90% for these variables)
+propmiss(training)
+n.missing <- sum(sapply(training, function(x) sum(is.na(x))/length(x) >= 0.05))
+training <- training[, sapply(training, function(x) sum(is.na(x))/length(x) < 0.05)]
+```
+
+A large number of predictors (`r n.missing`) have over 90% of the values missing. Due to the high number with missing values, as well as the very high percentage missingness, it was decided that replacement techniques would be inappropriate and these variables were excluded from the dataset. This left a list of 52 predictors.
+
+```{r variables_left}
+propmiss(training1)
+
+vars_left <- data.frame(Device <- character(length = 52), 
+                        Predictor <- colnames(training1[8:59]))
+names(vars_left) <- c("Device", "Predictor")
+vars_left$Device <- as.character(vars_left$Device)
+vars_left$Predictor <- as.character(vars_left$Predictor)
+
+vars_left$Device[grepl("belt", vars_left$Predictor, ignore.case = TRUE)] <- "Belt"
+vars_left$Device[grepl("arm", vars_left$Predictor, ignore.case = TRUE)] <- "Arm"
+vars_left$Device[grepl("dumbbell", vars_left$Predictor, ignore.case = TRUE)] <- "Dumbbell"
+vars_left$Device[grepl("forearm", vars_left$Predictor, ignore.case = TRUE)] <- "Forearm"
+
+vars_left$Predictor <- gsub("_belt|_arm|_dumbbell|_forearm", "", vars_left$Predictor)
+kable(table(vars_left$Predictor, vars_left$Device))
+```
+
+**Table 1.** Contingency table of predictors which will be used for the machine learning algorithms to predict how unilateral dumbbell biceps curl is performed.
+
+As demonstrated by Table 1, each of the 4 measurement points had measures of `r levels(as.factor(vars_left$Predictor)`.
+
+### Screening for near-zero variance variables
+
+```{r near_zero_variance_screening}
+nzv <- nearZeroVar(training1[8:59], saveMetrics= TRUE)
+nzv
+```
+
+None of the 52 predictors have zero- or near-zero variance, meaning all can be retained on this basis.
+
+### Correlations between variables
+
+Collinear variables (those with correlations at or above 0.8) were screened for.
+
+```{r predictor_intercorrelations}
+spec.cor <- function (dat, r, ...) { 
+    x <- cor(dat, ...) 
+    x[upper.tri(x, TRUE)] <- NA 
+    i <- which(abs(x) >= r, arr.ind = TRUE) 
+    data.frame(matrix(colnames(x)[as.vector(i)], ncol = 2), value = x[i]) 
+} 
+
+spec.cor(training1[ , 8:59], 0.8)
+```
+
+A number of the variables are collinear, which may introduce some noise into the models if collinear pairs are retained. If none of the models perform well in cross-validation, trimming on the basis of these associations could be considered to improve model fit.
+
+## Cross-validation and out-of-sample error estimation
+
+Three possible algorithms were considered to predict how the biceps curl was performed: decision tree analysis, random forests and Naive Bayes classification. Each of these models were built using all 52 predictors. K-fold cross validation with 10 folds was used for each. The out-of-sample error was estimated by:
+* Training the data on the "training" proportion of each fold;
+* Predicting the outcome of the "testing" proportion of each fold;
+* Generating the accuracy measure for each fold by constructing a confusion matrix between the predicted and actual outcome on the testing proportion; and
+* Taking the mean and standard deviation of the 10 accuracy scores from each fold.
+
+### Decision tree analysis
+
+```{r decision_tree_cv, message = FALSE, cache = TRUE}
+folds <- createFolds(training$classe, k = 10, list = TRUE, returnTrain = TRUE)
+accuracies.dt <- c()
+for (i in 1:10) {
+    model <- train(classe ~ ., data=training[folds[[i]], 8:60], method = "rpart")
+    predictions <- predict(model, training[-folds[[i]],8:59])
+    accuracies.dt <- c(accuracies, 
+                       confusionMatrix(predictions, training[-folds[[i]], 8:60]$classe)$overall[[1]])
+}
+```
+
+The mean accuracy of the decision tree analyses was `r mean(accuracies.dt)` and the standard deviation was `r sd(accuracies.dt)`. This projected out-of-sample error is unacceptably low, indicating that decision tree analysis is not appropriate to model this outcome.
+
+### Random forests
+
+```{r random_forests_cv, message = FALSE, cache = TRUE}
+accuracies.rf <- c()
+for (i in 1:10) {
+    model <- train(classe ~ ., data=training[folds[[i]], 8:60], method = "rf")
+    predictions <- predict(model, training[-folds[[i]],8:59])
+    accuracies.rf <- c(accuracies, 
+                       confusionMatrix(predictions, training[-folds[[i]], 8:60]$classe)$overall[[1]])
+}
+```
+
+The mean accuracy of the random forests analyses was `r mean(accuracies.rf)` and the standard deviation was `r sd(accuracies.rf)`. 
