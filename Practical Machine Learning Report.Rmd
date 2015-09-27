@@ -1,23 +1,24 @@
 ---
-title: "Predicting Manner of Exercising from Accelerometer Measurements Using Machine Learning"
-author: Jodie Burchell
+title: Predicting Manner of Exercising from Accelerometer Measurements Using Machine
+  Learning
+author: "Jodie Burchell"
 output: html_document
 ---
 
 ## Background
-This project aims to predict in which manner participants completed a single exercise, based on recordings provided by accelerometers on the belt, forearm, arm, and dumbell. Six male participants aged 20-28 were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in one correct, and 4 incorrect fashions. Specifically, the exercises were performed:
-* Exactly according to the specification (Class A);
-* Throwing elbows to the front (Class B);
-* Lifting the dumbbell only halfway (Class C);
-* Lowering the dumbbell only halfway (Class D); and
-* Throwing the hips to the front (Class E).
+This project aims to predict in which manner participants completed a single exercise, based on recordings provided by accelerometers attached to 4 measurement points on the body. Six male participants aged 20-28 were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in one correct, and 4 incorrect fashions. Specifically, the exercises were performed:  
+* Exactly according to the specification (__Class A__);  
+* Throwing elbows to the front (__Class B__);  
+* Lifting the dumbbell only halfway (__Class C__);  
+* Lowering the dumbbell only halfway (__Class D__); and  
+* Throwing the hips to the front (__Class E__).
 
-Measurements were taken using four 9 degrees of freedom Razor inertial measurement units (IMU), which were attached to the participant's chest, upper arm and forearm (glove) and the dumbbell (Figure 1). The authors of the study used a  used a sliding window approach with different lengths from 0.5 second to 2.5 seconds, with 0.5 second overlap. In each step of the sliding window approach we calculated features on the Euler angles (roll, pitch and yaw), as well as the raw accelerometer, gyroscope and magnetometer readings. For the Euler angles of each of the four sensors we calculated eight features: mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness, generating in total 96 derived feature sets.
+Measurements were taken using four 9 degrees of freedom Razor inertial measurement units (IMU), which were attached to the participant's chest, upper arm and forearm (glove) and the dumbbell (Figure 1). To build the study features from these devices, the authors of the study used a sliding window approach with different lengths from 0.5 second to 2.5 seconds, with 0.5 second overlap. In each step of the sliding window approach they calculated features on the Euler angles (roll, pitch and yaw), as well as the raw accelerometer, gyroscope and magnetometer readings. For the Euler angles of each of the four sensors they calculated eight features: mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness.
 
-```{r study_diagram fig.width=5, fig.height=5, echo=FALSE, fig.align = 'center'}
+```{r study_diagram, fig.width=4.5, fig.height=4.5, echo=FALSE, fig.align = 'center'}
 library(png)
 library(grid)
-img <- readPNG(Users/jburchell/Documents/Practical-Machine-Learning-Assignment/placement_of_measuring_devices.png)
+img <- readPNG("/Users/jburchell/Documents/Practical-Machine-Learning-Assignment/placement_of_measuring_devices.png")
 grid.raster(img)
 ```
 
@@ -36,7 +37,7 @@ data <- read.csv("data.csv")
 There were a total of `r nrow(data)` observations in the labelled dataset, which was large enough to split into training and testing datasets. Sixty percent of the data were assigned to the training set and 40% to the testing set.
 
 ```{r data_splitting, message = FALSE, cache = TRUE}
-library(caret); library(magrittr); library(knitr)
+require(caret)
 set.seed(567)
 inTrain <- createDataPartition(y = data$classe, p = 0.6, list = FALSE)
 training <- data[inTrain, ]
@@ -51,30 +52,32 @@ validation <- read.csv("validation.csv")
 rm(list = c("data", "inTrain"))
 ```
 
-The validation dataset had `r nrow(validation)`.
+The validation dataset had `r nrow(validation)` observations.
 
-## Data screening and covariate inspection
+## Data screening and covariate inspection (training set)
 
-The data were initially inspected. A number of variables appeared to have missing variables (e.g. ), and also variables that appeared numeric were classed as factor variables. In addition to the 92 predictor variables and the outcome, there also appeared to be a number of variables describing the time in which the exercise was performed and which of the participants performed the exercise.
+The data were initially inspected. A number of variables appeared to have missing variables (e.g., `max_roll_belt`), and also variables that appeared numeric were classed as factor variables (e.g., `kurtosis_roll_belt`. In addition to the `r ncol(training[8:159])` predictor variables and the outcome, there also appeared to be a number of variables describing the time in which the exercise was performed and which of the participants performed the exercise.
 
-```{r data_inspection, message = FALSE}
+```{r data_inspection, message = FALSE, warning = FALSE}
 str(training)
 ```
 
 ### Outcome variable
 
-The outcome variable was well distributed between the 5 categories, with the smallest class containing `r min(table(training$classe))`. 
+The outcome variable was fairly evenly distributed between the 5 categories, with the smallest class (Class D) containing `r min(table(training$classe))` observations (`r round(min(prop.table(table(training$classe))) * 100)`%), and the largest class (Class A) containing `r max(table(training$classe))` observations (`r round(max(prop.table(table(training$classe))) * 100)`%).
 
 ```{r frequency_outcome}
-prop.table(table(training$classe))
 table(training$classe)
+prop.table(table(training$classe))
 ```
 
 ### Cleaning factor variables
 
 The predictors were cleaned so that those that were incorrectly classified as factor were converted to numeric.
 
-```{r factor_to_numeric}
+```{r factor_to_numeric, message = FALSE, warning = FALSE}
+require(magrittr)
+
 asNumeric <- function(x) as.numeric(as.character(x))
 factorsNumeric <- function(d) modifyList(d, lapply(d[, sapply(d, is.factor)], 
                                                 asNumeric))
@@ -88,7 +91,7 @@ training %>%
 
 The variables were then inspected for missingness.
 
-```{r missingness_screen}
+```{r missingness_screen, message = FALSE, warning = FALSE}
 propmiss <- function(dataframe) {
     sapply(dataframe,function(x) 
     data.frame(nmiss=sum(is.na(x)), 
@@ -96,8 +99,6 @@ propmiss <- function(dataframe) {
                propmiss=sum(is.na(x))/length(x)))
 }
 
-# Get rid of variable with more than 5% missing (which turns out to be variables with any missing, as
-# missing data is around 90% for these variables)
 propmiss(training)
 n.missing <- sum(sapply(training, function(x) sum(is.na(x))/length(x) >= 0.05))
 training <- training[, sapply(training, function(x) sum(is.na(x))/length(x) < 0.05)]
@@ -105,11 +106,11 @@ training <- training[, sapply(training, function(x) sum(is.na(x))/length(x) < 0.
 
 A large number of predictors (`r n.missing`) have over 90% of the values missing. Due to the high number with missing values, as well as the very high percentage missingness, it was decided that replacement techniques would be inappropriate and these variables were excluded from the dataset. This left a list of 52 predictors.
 
-```{r variables_left}
-propmiss(training1)
+```{r variables_left, message = FALSE, warning = FALSE}
+require(knitr)
 
 vars_left <- data.frame(Device <- character(length = 52), 
-                        Predictor <- colnames(training1[8:59]))
+                        Predictor <- colnames(training[8:59]))
 names(vars_left) <- c("Device", "Predictor")
 vars_left$Device <- as.character(vars_left$Device)
 vars_left$Predictor <- as.character(vars_left$Predictor)
@@ -125,12 +126,14 @@ kable(table(vars_left$Predictor, vars_left$Device))
 
 **Table 1.** Contingency table of predictors which will be used for the machine learning algorithms to predict how unilateral dumbbell biceps curl is performed.
 
-As demonstrated by Table 1, each of the 4 measurement points had measures of `r levels(as.factor(vars_left$Predictor)`.
+As demonstrated by Table 1, each of the 4 measurement points had one each of the represented measures.
 
 ### Screening for near-zero variance variables
 
-```{r near_zero_variance_screening}
-nzv <- nearZeroVar(training1[8:59], saveMetrics= TRUE)
+```{r near_zero_variance_screening, message = FALSE}
+require(caret)
+
+nzv <- nearZeroVar(training[8:59], saveMetrics = TRUE)
 nzv
 ```
 
@@ -148,44 +151,144 @@ spec.cor <- function (dat, r, ...) {
     data.frame(matrix(colnames(x)[as.vector(i)], ncol = 2), value = x[i]) 
 } 
 
-spec.cor(training1[ , 8:59], 0.8)
+spec.cor(training[ , 8:59], 0.8)
 ```
 
-A number of the variables are collinear, which may introduce some noise into the models if collinear pairs are retained. If none of the models perform well in cross-validation, trimming on the basis of these associations could be considered to improve model fit.
+A number of the variables are collinear, which may introduce some noise into the models if collinear pairs are retained. If neither of the models perform well in cross-validation, trimming on the basis of these associations could be considered to improve model fit.
 
 ## Cross-validation and out-of-sample error estimation
 
-Three possible algorithms were considered to predict how the biceps curl was performed: decision tree analysis, random forests and Naive Bayes classification. Each of these models were built using all 52 predictors. K-fold cross validation with 10 folds was used for each. The out-of-sample error was estimated by:
-* Training the data on the "training" proportion of each fold;
-* Predicting the outcome of the "testing" proportion of each fold;
-* Generating the accuracy measure for each fold by constructing a confusion matrix between the predicted and actual outcome on the testing proportion; and
+Two possible algorithms were considered to predict how the biceps curl was performed: decision tree and random forests classification. Each of these models were built using all 52 predictors. K-fold cross validation with 10 folds was used for each. The out-of-sample error was estimated by:  
+* Fitting the model on the "training" proportion of each fold;  
+* Predicting the outcome on the "testing" proportion of each fold;  
+* Generating the accuracy measure for each fold by constructing a confusion matrix between the predicted and actual outcome on the testing proportion; and  
 * Taking the mean and standard deviation of the 10 accuracy scores from each fold.
 
-### Decision tree analysis
+### Decision tree classification
 
 ```{r decision_tree_cv, message = FALSE, cache = TRUE}
+set.seed(567)
 folds <- createFolds(training$classe, k = 10, list = TRUE, returnTrain = TRUE)
 accuracies.dt <- c()
 for (i in 1:10) {
     model <- train(classe ~ ., data=training[folds[[i]], 8:60], method = "rpart")
     predictions <- predict(model, training[-folds[[i]],8:59])
-    accuracies.dt <- c(accuracies, 
+    accuracies.dt <- c(accuracies.dt, 
                        confusionMatrix(predictions, training[-folds[[i]], 8:60]$classe)$overall[[1]])
 }
 ```
 
-The mean accuracy of the decision tree analyses was `r mean(accuracies.dt)` and the standard deviation was `r sd(accuracies.dt)`. This projected out-of-sample error is unacceptably low, indicating that decision tree analysis is not appropriate to model this outcome.
+The mean accuracy of the decision tree classifications was `r round(mean(accuracies.dt), 3)` and the standard deviation was `r round(sd(accuracies.dt), 3)`. This projected out-of-sample error is unacceptably high, indicating that decision tree classification is not appropriate to predict this outcome.
 
-### Random forests
+### Random forests classification
 
 ```{r random_forests_cv, message = FALSE, cache = TRUE}
+set.seed(567)
 accuracies.rf <- c()
 for (i in 1:10) {
     model <- train(classe ~ ., data=training[folds[[i]], 8:60], method = "rf")
     predictions <- predict(model, training[-folds[[i]],8:59])
-    accuracies.rf <- c(accuracies, 
+    accuracies.rf <- c(accuracies.rf, 
                        confusionMatrix(predictions, training[-folds[[i]], 8:60]$classe)$overall[[1]])
 }
 ```
 
-The mean accuracy of the random forests analyses was `r mean(accuracies.rf)` and the standard deviation was `r sd(accuracies.rf)`. 
+The mean accuracy of the random forests classification was `r round(mean(accuracies.rf), 3)` and the standard deviation was `r round(sd(accuracies.rf), 3)`. This projected out-of-sample error is very low, indicating that random forests classification is likely to be appropriate to predict this outcome.
+
+## Predicting on testing data
+
+### Data screening and cleaning
+
+The distribution of the outcome was first double-checked in the testing set:
+
+```{r frequency_outcome_testing}
+table(testing$classe)
+prop.table(table(testing$classe))
+```
+
+The distribution was similar to the training set (as expected), with a good number of observations in each category.
+
+The transformation applied to the testing set (factor variables converted to numeric) was applied to the testing set.
+
+```{r factor_to_numeric_testing, message = FALSE, warning = FALSE}
+require(magrittr)
+
+asNumeric <- function(x) as.numeric(as.character(x))
+factorsNumeric <- function(d) modifyList(d, lapply(d[, sapply(d, is.factor)], 
+                                                asNumeric))
+testing %>%
+    subset(select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, 
+                      cvtd_timestamp, new_window, num_window, classe)) %>%
+    factorsNumeric -> testing[ , 8:159]
+```
+
+### Predicting the outcome on the test set
+
+```{r predict_on_test_set, warnings = FALSE, cache = TRUE}
+# Build model on whole training set
+set.seed(567)
+model <- train(classe ~ ., data = training[ , 8:60], method = "rf")
+# Make predictions on testing set
+predictions <- predict(model, testing[,8:159])
+# Summarise results
+confusionMatrix(predictions, testing$classe)
+```
+
+### Evaluating the model
+
+The importance of the variables used in the model were assessed using an indication of variable importance. The 20 most important variables are listed below:
+
+```{r variable_importance, message = FALSE}
+varImp(model)
+```
+
+The top three predictors are modelled below. As you can see, their densities per outcome class are very similar between the training and testing sets, meaning they have good discriminant abilities that are not tied to the training set.
+
+```{r density_plots, message = FALSE, warning = FALSE, fig.height = 14, fig.width = 14}
+d.plots <- function(predictor, data, title, label) {
+    qplot(predictor, colour = classe, data = data, geom = "density") + 
+        xlab(label) +
+        ylab("Density") +
+        ggtitle(title) +
+        theme_bw()
+}
+
+g1 <- d.plots(training$roll_belt, training, "Belt Roll (Training)", "Belt roll")
+g2 <- d.plots(testing$roll_belt, testing, "Belt Roll (Testing)", "Belt roll")
+g3 <- d.plots(training$pitch_forearm, training, "Forearm Pitch (Training)", "Forearm pitch")
+g4 <- d.plots(testing$pitch_forearm, testing, "Forearm Pitch (Testing)", "Forearm pitch")
+g5 <- d.plots(training$yaw_belt, training, "Belt Yaw (Training)", "Belt yaw")
+g6 <- d.plots(testing$yaw_belt, testing, "Belt Yaw (Testing)", "Belt yaw")
+
+require(gridExtra)
+grid.arrange(g1, g2, g3, g4, g5, g6, nrow = 3, ncol = 2)
+```
+
+**Figure 2.** Three most important predictors and their distributions by outcome class in the training and testing sets.
+
+These top three predictors indicate that Class E has higher belt roll than the other classes, Class A has lower forearm pitch and Class D has higher forearm pitch than the other classes, and Class E has higher belt yaw.
+
+## Predicting the unlabelled validation set
+
+Finally, the outcome was predicted using the random forests algorithm on the unlabelled data. The results are displayed below.
+
+```{r factor_to_numeric_validation, message = FALSE, warning = FALSE}
+require(magrittr)
+
+asNumeric <- function(x) as.numeric(as.character(x))
+factorsNumeric <- function(d) modifyList(d, lapply(d[, sapply(d, is.factor)], 
+                                                asNumeric))
+validation %>%
+    subset(select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, 
+                      cvtd_timestamp, new_window, num_window, problem_id)) %>%
+    factorsNumeric -> validation[ , 8:159]
+```
+
+```{r predict_on_validation_set, warnings = FALSE}
+# Make predictions on validation set
+predictions <- predict(model, validation[,8:159])
+# Print predictions
+data.frame(problem_id = validation$problem_id, prediction = predictions)
+```
+
+

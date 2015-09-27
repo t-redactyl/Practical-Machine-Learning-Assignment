@@ -330,7 +330,7 @@ accuracies.dt <- c()
 for (i in 1:10) {
     model <- train(classe ~ ., data=training[folds[[i]], 8:60], method = "rpart")
     predictions <- predict(model, training[-folds[[i]],8:59])
-    accuracies.dt <- c(accuracies, 
+    accuracies.dt <- c(accuracies.dt, 
                        confusionMatrix(predictions, training[-folds[[i]], 8:60]$classe)$overall[[1]])
 }
 
@@ -338,7 +338,7 @@ accuracies.rf <- c()
 for (i in 1:10) {
     model <- train(classe ~ ., data=training[folds[[i]], 8:60], method = "rf")
     predictions <- predict(model, training[-folds[[i]],8:59])
-    accuracies.rf <- c(accuracies, 
+    accuracies.rf <- c(accuracies.rf, 
                        confusionMatrix(predictions, training[-folds[[i]], 8:60]$classe)$overall[[1]])
 }
 

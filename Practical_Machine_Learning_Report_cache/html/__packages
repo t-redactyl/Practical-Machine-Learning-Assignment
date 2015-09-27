@@ -1,0 +1,9 @@
+base
+png
+lattice
+ggplot2
+caret
+magrittr
+knitr
+rpart
+randomForest
